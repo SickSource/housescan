@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b1220">
+<title>HouseScan — 3D house capture</title>
+<style>
+  :root {
+    --bg: #0b1220; --panel: #131c2e; --panel2: #1a2540; --ink: #e8eefc; --dim: #8ea0c4;
+    --accent: #4f8cff; --good: #2ecc8f; --warn: #ffb347; --bad: #ff5d73; --r: 14px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .hidden { display: none !important; }
+  button, .btn { font: inherit; color: var(--ink); background: var(--panel2); border: 1px solid #2a3a60;
+    border-radius: 12px; padding: 12px 16px; cursor: pointer; display: block; text-align: center; width: 100%; }
+  button:disabled { opacity: .45; }
+  button.primary, .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.big { font-size: 18px; padding: 16px; }
+  button.small { padding: 8px 12px; width: auto; display: inline-block; font-size: 14px; }
+  .card { background: var(--panel); border-radius: var(--r); padding: 14px 16px; }
+  .screen { min-height: 100%; }
+
+  /* home */
+  #home { max-width: 560px; margin: 0 auto; padding: max(18px, env(safe-area-inset-top)) 16px 32px;
+    display: flex; flex-direction: column; gap: 12px; }
+  h1 { margin: 6px 0 0; font-size: 28px; letter-spacing: -.5px; }
+  h1 span { color: var(--accent); }
+  .sub { margin: 2px 0 6px; color: var(--dim); }
+  .status { border-left: 4px solid var(--dim); }
+  .status.good { border-color: var(--good); } .status.bad { border-color: var(--bad); }
+  details summary { cursor: pointer; font-weight: 600; }
+  details ul { margin: 10px 0 0; padding-left: 20px; color: var(--dim); }
+  details li { margin-bottom: 6px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; margin-top: 12px; }
+  .grid2 label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--dim); }
+  select { font: inherit; color: var(--ink); background: var(--panel2); border: 1px solid #2a3a60; border-radius: 10px; padding: 8px; }
+  .check { display: flex !important; flex-direction: row !important; align-items: center; gap: 8px !important; }
+
+  /* scan HUD (DOM overlay on top of the camera) */
+  #scan { position: fixed; inset: 0; background: transparent; pointer-events: none; }
+  #scan > * { pointer-events: auto; }
+  .hud-top { position: absolute; top: 0; left: 0; right: 0; padding: max(12px, env(safe-area-inset-top)) 14px 10px;
+    background: linear-gradient(rgba(0,0,0,.65), rgba(0,0,0,0)); display: flex; flex-direction: column; gap: 8px; }
+  .hud-row { display: flex; align-items: center; gap: 10px; font-weight: 600; text-shadow: 0 1px 3px #000; }
+  .pill { text-shadow: none; padding: 4px 10px; border-radius: 99px; font-size: 13px; background: #333; }
+  .pill.good { background: var(--good); color: #062; } .pill.warn { background: var(--warn); color: #530; } .pill.bad { background: var(--bad); color: #fff; }
+  .bar { height: 5px; background: rgba(255,255,255,.25); border-radius: 3px; overflow: hidden; }
+  .bar > div { height: 100%; width: 0; background: var(--accent); transition: width .25s; }
+  .hint { position: absolute; left: 14px; right: 14px; bottom: 108px; text-align: center; font-size: 14px;
+    text-shadow: 0 1px 3px #000; color: #fff; pointer-events: none !important; }
+  .hud-bottom { position: absolute; left: 0; right: 0; bottom: 0; padding: 14px 14px max(16px, env(safe-area-inset-bottom));
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; background: linear-gradient(rgba(0,0,0,0), rgba(0,0,0,.6)); }
+  .hud-bottom button { background: rgba(20,30,50,.85); }
+  .hud-bottom button.primary { background: var(--accent); }
+  #btnDiscard { position: absolute; top: max(12px, env(safe-area-inset-top)); right: 12px; width: auto; padding: 6px 12px; font-size: 13px; background: rgba(20,30,50,.75); }
+
+  /* results */
+  #results { height: 100%; display: flex; flex-direction: column; }
+  .rhead { display: flex; align-items: center; gap: 10px; padding: max(10px, env(safe-area-inset-top)) 12px 8px; }
+  .rhead .stats { flex: 1; font-size: 13px; color: var(--dim); }
+  .tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 0 12px 8px; }
+  .tabs button { padding: 9px; border-radius: 10px; background: transparent; }
+  .tabs button.active { background: var(--panel2); border-color: var(--accent); }
+  .tab { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .tab canvas { flex: 1; min-height: 0; width: 100%; touch-action: none; display: block; }
+  .panel { background: var(--panel); padding: 12px 14px max(14px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 10px; }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .row label { display: flex; align-items: center; gap: 8px; font-size: 14px; flex: 1; min-width: 140px; }
+  input[type=range] { flex: 1; accent-color: var(--accent); }
+  .muted { color: var(--dim); font-size: 13px; }
+  #tab-export { overflow: auto; padding: 4px 14px 24px; gap: 12px; }
+  fieldset { border: 1px solid #2a3a60; border-radius: var(--r); padding: 10px 14px 12px; margin: 0; }
+  legend { color: var(--dim); font-size: 13px; padding: 0 6px; }
+  fieldset label { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; }
+  fieldset label small { display: block; color: var(--dim); }
+  .presets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+
+  .busy { position: fixed; inset: 0; background: rgba(5,10,20,.75); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; z-index: 50; }
+  .spinner { width: 42px; height: 42px; border: 4px solid #2a3a60; border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 40px); opacity: 0; transition: .25s; background: #22304f; color: #fff;
+    padding: 10px 16px; border-radius: 12px; max-width: 90vw; z-index: 60; pointer-events: none; box-shadow: 0 4px 16px rgba(0,0,0,.4); }
+  #toast.on { transform: translate(-50%, 0); opacity: 1; }
+</style>
+</head>
+<body>
+
+<section id="home" class="screen">
+  <header>
+    <h1>House<span>Scan</span></h1>
+    <p class="sub">Walk through a house with your phone and capture a coloured 3D point cloud and a floor plan.</p>
+  </header>
+  <div id="support" class="card status">Checking AR support…</div>
+  <button id="btnScan" class="primary big" disabled>Start scan</button>
+  <button id="btnLast" class="hidden">Reopen last scan</button>
+  <label class="btn">Open a .ply point cloud<input id="filePly" type="file" accept=".ply" hidden></label>
+  <button id="btnDemo">Try the demo house (no AR needed)</button>
+
+  <details class="card">
+    <summary>Scan settings</summary>
+    <div class="grid2">
+      <label>Point spacing
+        <select data-setting="voxel">
+          <option value="0.01">1 cm (one room)</option>
+          <option value="0.02">2 cm (fine)</option>
+          <option value="0.03">3 cm (balanced)</option>
+          <option value="0.05">5 cm (whole house)</option>
+        </select>
+      </label>
+      <label>Max points
+        <select data-setting="maxPoints">
+          <option value="1000000">1 million</option>
+          <option value="2000000">2 million</option>
+          <option value="4000000">4 million</option>
+        </select>
+      </label>
+      <label>Max capture distance
+        <select data-setting="maxDepth">
+          <option value="2.5">2.5 m (most accurate)</option>
+          <option value="3.5">3.5 m</option>
+          <option value="5">5 m (more reach, noisier)</option>
+        </select>
+      </label>
+      <label>Samples per frame
+        <select data-setting="density">
+          <option value="48">Low (fast)</option>
+          <option value="64">Medium</option>
+          <option value="96">High</option>
+        </select>
+      </label>
+      <label>Depth mode
+        <select data-setting="depthType">
+          <option value="smooth">Smooth (filled-in)</option>
+          <option value="raw">Raw (sharper, holes)</option>
+        </select>
+      </label>
+      <label class="check"><input type="checkbox" data-setting="flipColor"> Flip camera colours (if colours look upside-down)</label>
+    </div>
+  </details>
+
+  <details class="card">
+    <summary>How to get a good scan</summary>
+    <ul>
+      <li>Turn on the lights. Depth and tracking need light and texture.</li>
+      <li>Start by moving the phone gently side to side until the status says <b>Capturing</b>.</li>
+      <li>Walk slowly. Sweep each wall from floor to ceiling, staying 0.5–3 m away.</li>
+      <li>Pass through doorways slowly and look back into the room you left, so rooms link up.</li>
+      <li>Glass, mirrors, glossy and plain white surfaces scan poorly.</li>
+      <li>End the scan back where you started. Tracking drifts over long paths, so do big houses in a few scans.</li>
+    </ul>
+  </details>
+  <p class="muted">Needs Chrome on an Android phone with Google Play Services for AR and Depth API support. Everything runs on your phone. Nothing is uploaded.</p>
+</section>
+
+<section id="scan" class="screen hidden">
+  <div class="hud-top">
+    <div class="hud-row"><span id="hudStatus" class="pill warn">Starting…</span><span id="hudPoints">0 pts</span><span id="hudColor" class="muted"></span></div>
+    <div class="bar"><div id="hudBar"></div></div>
+  </div>
+  <button id="btnDiscard">Discard</button>
+  <div id="hint" class="hint"></div>
+  <div class="hud-bottom">
+    <button id="btnPause">Pause</button>
+    <button id="btnTogglePts">Hide points</button>
+    <button id="btnFinish" class="primary">Finish</button>
+  </div>
+</section>
+
+<section id="results" class="screen hidden">
+  <div class="rhead">
+    <div id="stats" class="stats"></div>
+    <button id="btnNew" class="small">New scan</button>
+  </div>
+  <nav class="tabs">
+    <button data-tab="view3d" class="active">3D</button>
+    <button data-tab="plan">Floor plan</button>
+    <button data-tab="export">Export</button>
+  </nav>
+
+  <div id="tab-view3d" class="tab">
+    <canvas id="viewCanvas"></canvas>
+    <div class="panel">
+      <div class="row">
+        <label>Point size <input id="ptSize" type="range" min="0.4" max="3" step="0.1" value="1"></label>
+        <label>Noise filter <input id="minObs" type="range" min="1" max="15" step="1" value="3"></label>
+      </div>
+      <div class="row">
+        <label><select id="colorMode"><option value="0">Photo colours</option><option value="1">Colour by height</option></select></label>
+        <label><input id="cutCeiling" type="checkbox" checked> Cut away ceiling</label>
+        <button id="btnResetView" class="small">Reset view</button>
+      </div>
+      <div class="muted">Drag to orbit · pinch to zoom · two fingers to pan</div>
+    </div>
+  </div>
+
+  <div id="tab-plan" class="tab hidden">
+    <canvas id="planCanvas"></canvas>
+    <div class="panel">
+      <div id="planInfo" class="muted"></div>
+      <div class="row">
+        <button id="btnMeasure" class="small">Measure</button>
+        <button id="btnClearMeasure" class="small">Clear</button>
+        <button id="btnFit" class="small">Fit</button>
+        <button id="btnPlanPng" class="small">Save PNG</button>
+      </div>
+      <div class="row">
+        <label>Wall sensitivity <input id="wallSens" type="range" min="0" max="1" step="0.05" value="0.5"></label>
+        <label>Slice from <span id="bandLowVal">1.0 m</span><input id="bandLow" type="range" min="0.3" max="1.8" step="0.1" value="1.0"></label>
+      </div>
+    </div>
+  </div>
+
+  <div id="tab-export" class="tab hidden">
+    <div>
+      <div class="muted" style="margin-bottom:6px">Presets</div>
+      <div class="presets">
+        <button id="presetUnreal" class="small">Unreal</button>
+        <button id="presetBlender" class="small">Blender</button>
+        <button id="presetUnity" class="small">Unity / Godot</button>
+      </div>
+    </div>
+    <fieldset>
+      <legend>Format</legend>
+      <label><input type="radio" name="fmt" value="ply" checked><span>PLY (binary)<small>Blender, MeshLab, CloudCompare. Unity and Godot need a point-cloud importer plugin.</small></span></label>
+      <label><input type="radio" name="fmt" value="xyz"><span>XYZ text (X Y Z R G B)<small>Unreal Engine LiDAR Point Cloud plugin, CloudCompare. Bigger file.</small></span></label>
+    </fieldset>
+    <fieldset>
+      <legend>Axes (metres)</legend>
+      <label><input type="radio" name="up" value="z" checked><span>Z-up<small>Unreal, Blender, CloudCompare</small></span></label>
+      <label><input type="radio" name="up" value="y"><span>Y-up<small>Unity, Godot, three.js, glTF tools</small></span></label>
+      <label><input id="expAlign" type="checkbox" checked><span>Align to floor &amp; walls<small>Puts the floor at height 0, squares the walls to the axes and centres the house.</small></span></label>
+      <label><input id="expMirror" type="checkbox"><span>Mirror X<small>Use this only if the import comes out mirrored (some importers flip handedness).</small></span></label>
+    </fieldset>
+    <div id="exportCount" class="muted"></div>
+    <button id="btnExport" class="primary big">Download point cloud</button>
+    <p class="muted">The noise filter from the 3D tab also applies to the export.</p>
+  </div>
+</section>
+
+<div id="busy" class="busy hidden"><div class="spinner"></div><div id="busyText"></div></div>
+<div id="toast"></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
